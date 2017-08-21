@@ -82,6 +82,17 @@ Uninstall and remove plugin:
 wp plugin deactivate php-compatibility-checker --uninstall
 ```
 
+## disable comments using wp cli
+
+From the root of the install, you will want to run these two commands:
+
+```
+wp post list --format=ids | xargs wp post update --comment_status=closed
+wp post list --format=ids | xargs wp post update --ping_status=closed
+```
+
+Source: https://gist.github.com/jplhomer/646927e569548bca4f4e
+
 ## create a directory index
 
 Add the following to the .htaccess file for that directory or create a .htaccess file with the following:
@@ -137,7 +148,7 @@ find ./wp-content/ -maxdepth 2 -type d -mtime -1 | sed 1d | cut -d\/ -f1-4 | egr
 ```
 You will want to run this within the root of the install, and you can modify the `-mtime` flag number in order to open the range of number of days you want to look back.
 
-## alias home and siteurl
+## WordPress alias home and siteurl
 
 Using this define rule in the wp-config.php will allow you to have any domain that is mapped to the install and has its DNS pointed to us to act as the primary domain (home and siteurl) in the browser:
 
@@ -152,6 +163,22 @@ This can be helpful when inbetween domains whether it be for marketing purposes 
 **DO NOT USE ON MULTISITES.**
 I have not seen it done before, but I only imagine it will just have all the subsites display the content of the parent site/primary install.
 
+## WordPress relatively secure home and siteurls
+
+Placing this in the **wp-config.php** will prevent the redirect from HTTP to HTTPS or vise versa (as long has you don't have any other force rules in nginx or apache.
+
+There are very limited cases when something like this can be used, but it has been asked about before..
+
+```
+if ($_SERVER['HTTPS']) {
+ define('WP_SITEURL', 'https://DOMAIN.COM');
+ define('WP_HOME', 'https://DOMAIN.COM');
+} else {
+ define('WP_SITEURL', 'http://DOMAIN.COM');
+ define('WP_HOME', 'http://DOMAIN.COM');
+}
+```
+
 ## nginx query arg redirect
 
 This is redirecting any `ref` arguments to `newref`. Place in location block:
@@ -164,7 +191,16 @@ rewrite ^/(.*) /$1?newref=$args_ref permanent;
 
 ## nginx block curl/by user agent
 
-This is awesome if you are not wanting people to curl your site/server, but still wanting services like cron to still work (as cron often uses curl in order to work).
+To simply block a user agent, you can use the following in nginx:
+
+```
+if ( $http_user_agent ~* "USER AGENT" ) {
+return 444;
+access_log off;
+}
+```
+
+But if you're not wanting people to curl your site/server, but still wanting services like cron to still work (as cron often uses curl in order to work), this comes in handy:
 
 ```
 if ($remote_addr !~* 127.0.0.1|SERVER.IP) {
@@ -202,4 +238,40 @@ Placing the following will disable the iframe feature for websites outside of yo
 
 ```
 add_header X-Frame-Options "SAMEORIGIN";
+```
+
+## nginx make WordPress uploads only available (private) for logged in users
+
+```
+location ~* ^/wp-content/uploads/(.*) {
+set $mustlogin 0;
+if ( $http_cookie ~* "wordpress_logged_in_" ) {
+set $mustlogin "A";
+}
+if ($mustlogin = 0) {
+return 403;
+}
+proxy_pass http://localhost:6776;
+}
+```
+
+## find highest number of unique ip addresses
+
+This is a quick script, will go through and count the number of unique IP addresses per site in the Apache access logs.
+This is kinda only useful when you have a feeling someone might be getting under an attack.
+
+```
+ls /var/log/apache2/*.access.log | while read logfile; do echo -n "${logfile}:"; awk '{print $1}' ${logfile} | sort -u | wc -l; done | sort -rt':' -nk2 | head
+```
+
+## recursively check php for syntax errors
+
+```
+find . -iname "*.php" -exec php -l {} \; | grep -i "Errors.parsing"
+```
+
+another rendition of the same idea if you want it more verbose:
+
+```
+find . -name \*.php -exec php -l "{}" \;
 ```
